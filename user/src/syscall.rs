@@ -1,5 +1,4 @@
 use crate::{TaskInfo, SignalAction};
-
 use super::{Stat, TimeVal};
 
 pub const SYSCALL_OPENAT: usize = 56;
@@ -44,6 +43,9 @@ pub const SYSCALL_SEMAPHORE_DOWN: usize = 470;
 pub const SYSCALL_CONDVAR_CREATE: usize = 471;
 pub const SYSCALL_CONDVAR_SIGNAL: usize = 472;
 pub const SYSCALL_CONDVAR_WAIT: usize = 473;
+pub const SYSCALL_GETPWD: usize = 17;
+pub const SYSCALL_SHUTDOWN: usize = 210;
+
 
 pub fn syscall(id: usize, args: [usize; 3]) -> isize {
     let mut ret: isize;
@@ -266,6 +268,9 @@ pub fn sys_condvar_wait(condvar_id: usize, mutex_id: usize) -> isize {
     syscall(SYSCALL_CONDVAR_WAIT, [condvar_id, mutex_id, 0])
 }
 
+pub fn sys_shutdown() -> isize {
+    syscall(SYSCALL_SHUTDOWN, [0, 0, 0])
+}
 pub fn sys_sigaction(
     signum: i32,
     action: *const SignalAction,
@@ -291,4 +296,8 @@ pub fn sys_sigreturn() -> isize {
 
 pub fn sys_kill(pid: usize, signal: i32) -> isize {
     syscall(SYSCALL_KILL, [pid, signal as usize, 0])
+}
+
+pub fn sys_getcwd(buf: *mut u8, size: u32) -> isize{
+    syscall(SYSCALL_GETPWD, [buf as usize, size as usize, 0])
 }

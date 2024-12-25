@@ -1,31 +1,30 @@
-//!Implementation of [`Processor`] and Intersection of control flow
-//!
-//! Here, the continuous operation of user apps in CPU is maintained,
-//! the current running state of CPU is recorded,
-//! and the replacement and transfer of control flow of different applications are executed.
+// 实现 [`Processor`] 和控制流的交叉
+// 在这里，维护了用户应用程序在 CPU 上的连续运行，
+// 记录了 CPU 当前的运行状态，
+// 并执行了不同应用程序的控制流替换和切换。
 
 use super::__switch;
-use super::task::TaskInfo;
 use super::{fetch_task, TaskStatus};
 use super::{TaskContext, TaskControlBlock};
 use crate::mm::page_table::PTEFlags;
 use crate::mm::{PhysPageNum, VirtPageNum};
 use crate::sync::UPSafeCell;
+use crate::timer::get_time;
 use crate::trap::TrapContext;
 use alloc::sync::Arc;
 use lazy_static::*;
 
-/// Processor management structure
+/// 处理器管理结构
 pub struct Processor {
-    ///The task currently executing on the current processor
+    /// 当前处理器上正在执行的任务
     current: Option<Arc<TaskControlBlock>>,
 
-    ///The basic control flow of each core, helping to select and switch process
+    /// 每个核心的基本控制流，辅助选择和切换进程
     idle_task_cx: TaskContext,
 }
 
 impl Processor {
-    ///Create an empty Processor
+    /// 创建一个空的处理器
     pub fn new() -> Self {
         Self {
             current: None,
@@ -33,70 +32,73 @@ impl Processor {
         }
     }
 
-    ///Get mutable reference to `idle_task_cx`
+    /// 获取 `idle_task_cx` 的可变引用
     fn get_idle_task_cx_ptr(&mut self) -> *mut TaskContext {
         &mut self.idle_task_cx as *mut _
     }
 
-    ///Get current task in moving semanteme
+    /// 获取当前任务（移动语义）
     pub fn take_current(&mut self) -> Option<Arc<TaskControlBlock>> {
         self.current.take()
     }
 
-    ///Get current task in cloning semanteme
+    /// 获取当前任务（克隆语义）
     pub fn current(&self) -> Option<Arc<TaskControlBlock>> {
         self.current.as_ref().map(Arc::clone)
     }
 }
 
 lazy_static! {
+    /// 全局唯一的处理器实例
     pub static ref PROCESSOR: UPSafeCell<Processor> = unsafe { UPSafeCell::new(Processor::new()) };
 }
 
-///The main part of process execution and scheduling
-///Loop `fetch_task` to get the process that needs to run, and switch the process through `__switch`
+/// 进程执行与调度的核心部分
+/// 循环调用 `fetch_task` 获取需要运行的进程，并通过 `__switch` 切换进程
 pub fn run_tasks() {
     loop {
         let mut processor = PROCESSOR.exclusive_access();
         if let Some(task) = fetch_task() {
             let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();
-            // access coming task TCB exclusively
+            // 独占访问即将运行任务的 TCB
             let mut task_inner = task.inner_exclusive_access();
             let next_task_cx_ptr = &task_inner.task_cx as *const TaskContext;
             task_inner.task_status = TaskStatus::Running;
-            // release coming task_inner manually
+            let ms1 = get_time();
+            task_inner.task_info.start = ms1 as u64;
+            // 手动释放 task_inner 的独占访问
             drop(task_inner);
-            // release coming task TCB manually
+            // 手动释放任务的 TCB
             task.update_stri();
             processor.current = Some(task);
-            // release processor manually
+            // 手动释放处理器的独占访问
             drop(processor);
             unsafe {
                 __switch(idle_task_cx_ptr, next_task_cx_ptr);
             }
         } else {
-            warn!("no tasks available in run_tasks");
+            warn!("在 run_tasks 中没有可用的任务");
         }
     }
 }
 
-/// Get current task through take, leaving a None in its place
+/// 通过 take 获取当前任务，同时留下一个 None
 pub fn take_current_task() -> Option<Arc<TaskControlBlock>> {
     PROCESSOR.exclusive_access().take_current()
 }
 
-/// Get a copy of the current task
+/// 获取当前任务的副本
 pub fn current_task() -> Option<Arc<TaskControlBlock>> {
     PROCESSOR.exclusive_access().current()
 }
 
-/// Get the current user token(addr of page table)
+/// 获取当前用户态的 token（页表地址）
 pub fn current_user_token() -> usize {
     let task = current_task().unwrap();
     task.get_user_token()
 }
 
-///Get the mutable reference to trap context of current task
+/// 获取当前任务的 trap 上下文的可变引用
 pub fn current_trap_cx() -> &'static mut TrapContext {
     current_task()
         .unwrap()
@@ -104,35 +106,29 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
         .get_trap_cx()
 }
 
-/// update info
-pub fn update_info(id:usize){
+/// 更新任务的时间信息
+pub fn update_time(ms: usize) {
     current_task()
-    .unwrap()
-    .update_info(id);
+        .unwrap()
+        .inner_exclusive_access()
+        .task_info.update_sys(ms);
 }
 
-/// show_info
-pub fn show_info()->TaskInfo{
+/// 映射一页虚拟内存到物理内存
+pub fn map_one(vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) -> isize {
     current_task()
-    .unwrap()
-    .show_info()
+        .unwrap()
+        .map(vpn, ppn, flags)
 }
 
-/// map_one
-pub fn map_one(vpn: VirtPageNum, ppn: PhysPageNum, flags: PTEFlags) -> isize{
+/// 取消映射一页虚拟内存
+pub fn unmap_one(vpn: VirtPageNum) -> isize {
     current_task()
-    .unwrap()
-    .map(vpn, ppn, flags)
+        .unwrap()
+        .unmap(vpn)
 }
 
-/// unmap_one
-pub fn unmap_one(vpn: VirtPageNum) -> isize{
-    current_task()
-    .unwrap()
-    .unmap(vpn)
-}
-
-///Return to idle control flow for new scheduling
+/// 返回到空闲的控制流以便进行新的调度
 pub fn schedule(switched_task_cx_ptr: *mut TaskContext) {
     let mut processor = PROCESSOR.exclusive_access();
     let idle_task_cx_ptr = processor.get_idle_task_cx_ptr();

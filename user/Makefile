@@ -24,16 +24,18 @@ binary:
 		$(OBJCOPY) $(elf) --strip-all -O binary $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.bin, $(elf)); \
 		cp $(elf) $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.elf, $(elf));)
 
+	 
+
 disasm:
 	@$(foreach elf, $(ELFS), \
 		$(OBJDUMP) $(elf) -S > $(patsubst $(TARGET_DIR)/%, $(TARGET_DIR)/%.asm, $(elf));)
 	@$(foreach t, $(ELFS), cp $(t).asm $(BUILD_DIR)/asm/;)
 
 pre:
+	@mkdir -p $(BUILD_DIR)
 	@mkdir -p $(BUILD_DIR)/bin/
 	@mkdir -p $(BUILD_DIR)/elf/
 	@mkdir -p $(BUILD_DIR)/app/
-	@mkdir -p $(BUILD_DIR)/asm/
 	@$(foreach t, $(APPS), cp $(t) $(BUILD_DIR)/app/;)
 
 build: clean pre binary
@@ -43,6 +45,7 @@ build: clean pre binary
 clean:
 	@cargo clean
 	@rm -rf $(BUILD_DIR)
+	
 
 all: build
 

@@ -19,7 +19,7 @@
 //! userspace.
 
 #![deny(missing_docs)]
-#![deny(warnings)]
+// #![deny(warnings)]
 #![no_std]
 #![no_main]
 #![feature(panic_info_message)]
@@ -39,17 +39,21 @@ pub mod drivers;
 pub mod fs;
 pub mod lang_items;
 pub mod logging;
+/// mm module
 pub mod mm;
 pub mod sbi;
 pub mod sync;
 pub mod syscall;
+/// task module
 pub mod task;
 pub mod timer;
 pub mod trap;
+mod loader;
 
 use core::arch::global_asm;
 
 global_asm!(include_str!("entry.asm"));
+global_asm!(include_str!("link_app.S"));
 /// clear BSS segment
 fn clear_bss() {
     extern "C" {

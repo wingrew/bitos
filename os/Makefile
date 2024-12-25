@@ -4,7 +4,9 @@ MODE := release
 KERNEL_ELF := target/$(TARGET)/$(MODE)/os
 KERNEL_BIN := $(KERNEL_ELF).bin
 DISASM_TMP := target/$(TARGET)/$(MODE)/asm
-FS_IMG := ../user/target/$(TARGET)/$(MODE)/fs.img
+FS_IMG := ../user/build/img/fs.img
+SD_IMG := sdcard-riscv.img
+# FS_IMG := ../user/sdcard-riscv.img
 APPS := ../user/src/bin/*
 OFFLINE :=
 
@@ -25,14 +27,14 @@ KERNEL_ENTRY_PA := 0x80200000
 OBJDUMP := rust-objdump --arch-name=riscv64
 OBJCOPY := rust-objcopy --binary-architecture=riscv64
 
-BASE ?= 1
+BASE ?= 0x1000
 
 # Disassembly
 DISASM ?= -x
 
 # Run usertests or usershell
 
-build: env $(KERNEL_BIN) fs-img 
+build: env $(KERNEL_BIN)
 
 env:
 ifeq ($(OFFLINE),)
@@ -46,17 +48,18 @@ $(KERNEL_BIN): kernel
 	@$(OBJCOPY) $(KERNEL_ELF) --strip-all -O binary $@
 
 fs-img: $(APPS)
-	@make -C ../user build BASE=$(BASE)
-	@rm -f $(FS_IMG)
-	@cd ../easy-fs-fuse && cargo run --release -- -s ../user/build/app/ -t ../user/target/riscv64gc-unknown-none-elf/release/
+	@make all -C ../user build BASE=$(BASE)
+	# @rm -f ./$(SD_IMG)
+	# @gunzip -k ./$(SD_IMG).gz
+	# @cd ../modify-img && cargo run --release -- -s ../user/test/ -t ../
 
-kernel:
-	@make -C ../user build BASE=$(BASE)
+kernel: fs-img
 	@echo Platform: $(BOARD)
 	@cargo build $(MODE_ARG)
 
 clean:
 	@cargo clean
+
 
 disasm: kernel
 	@$(OBJDUMP) $(DISASM) $(KERNEL_ELF) | less
@@ -66,16 +69,7 @@ disasm-vim: kernel
 	@vim $(DISASM_TMP)
 	@rm $(DISASM_TMP)
 
-run: build run-inner
-
-run-inner:
-	@qemu-system-riscv64 \
-		-machine virt \
-		-nographic \
-		-bios $(BOOTLOADER) \
-		-device loader,file=$(KERNEL_BIN),addr=$(KERNEL_ENTRY_PA) \
-		-drive file=$(FS_IMG),if=none,format=raw,id=x0 \
-        -device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0
+run: build
 
 debug: build
 	@tmux new-session -d \
@@ -91,3 +85,14 @@ gdbclient:
 	@riscv64-unknown-elf-gdb -ex 'file $(KERNEL_ELF)' -ex 'set arch riscv:rv64' -ex 'target remote localhost:1234'
 
 .PHONY: build env kernel clean disasm disasm-vim run-inner fs-img gdbserver gdbclient
+
+
+
+# @qemu-system-riscv64 \
+# 	-machine virt \
+# 	-kernel kernel-qemu 
+# 	-m 128M -nographic -smp 2 
+# 	-bios sbi-qemu 
+# 	-drive file=sdcard.img,if=none,format=raw,id=x0  
+# 	-device virtio-blk-device,drive=x0,bus=virtio-mmio-bus.0 
+# 	-device virtio-net-device,netdev=net -netdev user,id=net 

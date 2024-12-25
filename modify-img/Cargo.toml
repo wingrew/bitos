@@ -1,0 +1,11 @@
+[package]
+name = "modify-img"
+
+[dependencies]
+clap = { path = "../dependencies/clap-2.34.0" }
+fatfs = { path = "../dependencies/fatfs-0.3.6" }
+rand = { path = "../dependencies/rand-0.8.5" }
+
+# [features]
+# board_qemu = []
+# board_k210 = []

@@ -13,7 +13,7 @@ extern crate core;
 #[macro_use]
 extern crate bitflags;
 
-use alloc::vec::Vec;
+use alloc::{string::String, vec::Vec, vec};
 use buddy_system_allocator::LockedHeap;
 pub use console::{flush, STDIN, STDOUT};
 pub use syscall::*;
@@ -249,29 +249,11 @@ pub fn set_priority(prio: isize) -> isize {
 }
 
 pub fn wait(exit_code: &mut i32) -> isize {
-    loop {
-        match sys_waitpid(-1, exit_code as *mut _) {
-            -2 => {
-                sys_yield();
-            }
-            n => {
-                return n;
-            }
-        }
-    }
+    sys_waitpid(-1, exit_code as *mut _)
 }
 
 pub fn waitpid(pid: usize, exit_code: &mut i32) -> isize {
-    loop {
-        match sys_waitpid(pid as isize, exit_code as *mut _) {
-            -2 => {
-                sys_yield();
-            }
-            n => {
-                return n;
-            }
-        }
-    }
+    sys_waitpid(pid as isize, exit_code as *mut _)
 }
 
 pub fn sleep_blocking(sleep_ms: usize) {
@@ -360,6 +342,10 @@ pub fn condvar_signal(condvar_id: usize) {
 }
 pub fn condvar_wait(condvar_id: usize, mutex_id: usize) {
     sys_condvar_wait(condvar_id, mutex_id);
+}
+
+pub fn shutdown(){
+    sys_shutdown();
 }
 
 /// Action for a signal
@@ -471,4 +457,29 @@ pub fn sigprocmask(mask: u32) -> isize {
 
 pub fn sigreturn() -> isize {
     sys_sigreturn()
+}
+
+pub fn getpwd(buf:&mut String, size: u32) -> isize{
+    let mut buffer: Vec<u8> = vec![0; size as usize];
+    let buffer_ptr = buffer.as_mut_ptr();
+    
+    // 假设 sys_getcwd 是一个系统调用，获取当前工作目录
+    let result = sys_getcwd(buffer_ptr, size);
+
+    if result < 0 {
+        // 如果系统调用失败，返回错误代码
+        return result;
+    }
+
+    // 找到字节数组中的第一个 0 字节，表示字符串的结束
+    let null_pos = buffer.iter().position(|&b| b == 0).unwrap_or(buffer.len());
+
+    // 清空 buf，并将有效的 UTF-8 字节切片转换成字符串
+    buf.clear();
+    if let Ok(valid_str) = core::str::from_utf8(&buffer[..null_pos]) {
+        buf.push_str(valid_str);  // 将字符串添加到 buf 中
+        0  // 返回成功
+    } else {
+        -1 // 如果 UTF-8 无效，返回错误
+    }
 }

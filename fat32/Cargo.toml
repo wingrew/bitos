@@ -1,0 +1,13 @@
+[package]
+name = "fat32"
+
+[dependencies]
+spin = { path = "../dependencies/spin-0.7.1" }
+lazy_static = { path = "../dependencies/lazy_static-1.5.0", features = ["spin_no_std"]}
+
+[profile.release]
+debug = true
+
+[features]
+board_qemu = []
+board_k210 = []
